@@ -22,7 +22,7 @@ import sys
 import socket
 import re
 # you may use urllib to encode data appropriately
-import urllib.parse
+from urllib.parse import urlparse, urlencode
 
 def help():
     print("httpclient.py [GET/POST] [URL]\n")
@@ -33,7 +33,27 @@ class HTTPResponse(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
+    def get_host_port(self,url):
+        o = urlparse(url)
+
+        # checking hostname
+        if (o.hostname == None):
+            host = "http://127.0.0.1" #local
+        else: 
+            host = o.hostname
+
+        # checking port
+        if (o.port == None):
+            port = 80
+        else:
+            port = o.port
+
+        # checking path
+        if (o.path == ""):
+            path = "/"
+        else:
+            path = o.path
+        return host, port, path
 
     def connect(self, host, port):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -41,13 +61,13 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        return int(data.split(" ")[1])
 
     def get_headers(self,data):
-        return None
+        return data.split('\r\n\r\n')[0]
 
     def get_body(self, data):
-        return None
+        return data.split('\r\n\r\n')[1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -68,13 +88,54 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
+        # check if url is empty
+        if (len(url) == 0):
+            return HTTPResponse(404, "URL is empty")
+
         code = 500
         body = ""
+
+        # get host, port, path
+        host, port, path = self.get_host_port(url)
+        self.connect(host, port)
+
+        msg = "GET " + str(path) + " HTTP/1.1\r\n" + "Host: " + str(host) + "\r\nAccept:*/*\r\nConnection: close" + "\r\n\r\n"
+        self.sendall(msg) 
+
+        data = self.recvall(self.socket)
+
+        code = self.get_code(data)
+        body = self.get_body(data)
+        # print(code)
+        # print(body)
+
+        self.close()
+
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
+        # check if url is empty
+        if (len(url) == 0):
+            return HTTPResponse(404, "URL is empty")
         code = 500
         body = ""
+
+        # get host, port, path
+        host, port, path = self.get_host_port(url)
+        self.connect(host, port)
+
+        if (args!= None):
+            body = urlencode(args)
+
+        msg = "POST " + str(path) + " HTTP/1.1\r\n" + "Host: " + str(host) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nAccept:*/*\r\nContent-Length: " + str(len(body)) + "\r\nConnection: close\r\n\r\n" + body
+        # print(msg)
+        self.sendall(msg) 
+        data = self.recvall(self.socket)
+        # print("check------------------------------------------------")
+
+        code = self.get_code(data)
+        body = self.get_body(data)
+        self.close()
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
